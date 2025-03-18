@@ -94,3 +94,22 @@ props.setProperty("group.instance.id", SOME_STATIC_ID);
 // the consumer with STATIC_ID has timeouts ms to rejopin to the same topic partition without rebalancing. it is good in case local state and cache 
 props.setProperty("session.timeouts.ms", 20000);
 ```
+
+## Optimization (high througput)
+
+### Compression  
+[compression](https://blog.cloudflare.com/squeezing-the-firehose/)
+props.setProperty(ProducerConfig.COMPRESSION_TYPE_CONFIG, "snappy");
+snappy is good for jsons
+
+### threads
+props.setProperty(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, "5"); // default
+
+### batching
+props.setProperty(ProducerConfig.LINGER_MS_CONFIG, "20"); collect batch
+props.setProperty(ProducerConfig.BATCH_SIZE_CONFIG, Integer.toString(32*1024)); in kb (default 16 ) bigger batch -> better compression
+
+
+### buffer 
+if producer producess faster than the broker
+props.setProperty(ProducerConfig.BUFFER_MEMORY_CONFIG, ); //32 MB by default

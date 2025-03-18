@@ -3,6 +3,7 @@ package com.ok.kafka.basics;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RoundRobinPartitioner;
+import org.apache.kafka.clients.producer.internals.StickyPartitionCache;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,7 +27,8 @@ public class ProducerDemo {
 //        props.setProperty("linger.ms", String.valueOf(1));
 //        props.setProperty("buffer.memory", String.valueOf(33554432));
 //        props.setProperty("compression.type", "snappy");
-        props.put("partitioner.class", RoundRobinPartitioner.class.getName());
+//        props.put("partitioner.class", RoundRobinPartitioner.class.getName());
+        props.put("partitioner.class", StickyPartitionCache.class.getName());
         props.setProperty("key.serializer", StringSerializer.class.getName());
         props.setProperty("value.serializer", StringSerializer.class.getName());
 
