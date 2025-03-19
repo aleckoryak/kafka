@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit;
 
 public class WikimediaChangesProducer {
     private static final Logger logger = LoggerFactory.getLogger(WikimediaChangesProducer.class);
-    public static final String BOOTSTRAP = "172.21.93.198:9092";
+    public static final String BOOTSTRAP = "localhost:9092";
 
     public static void main(String[] args) throws InterruptedException {
         logger.info("Hello World");
