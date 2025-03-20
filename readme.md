@@ -11,6 +11,9 @@
 4. https://github.com/Burakyvz/WikimediaStreamProcessor
 5. https://github.com/sumankhara/Kafka
 6. https://github.com/gustavo-flor/kafka-beginners-course
+7. [connectors](https://www.confluent.io/hub/)
+8. [wikimedia connector](https://github.com/conduktor/kafka-connect-wikimedia)
+9. https://github.com/conduktor/kafka-beginners-course
 
 ```shell
 kafka-server-start.sh ~/kafka_2.13-3.9.0/config/kraft/server.properties
@@ -106,3 +109,24 @@ while (true) {
 props.put("enable.auto.commit", "true"); // Enable auto-commit
 props.put("auto.commit.interval.ms", "1000"); // Commit offsets every second
 ```
+
+## heartbeats
+* heartbeat.interval.ms = 3000  
+   * usually 1/3rd of session.timeout.ms
+* session.timeout.ms = 30000
+   * if no heartbeat during that period -> consumer is considered dead
+   * it is better to set even lover to faster customer rebalances
+## pool threads
+* max.poll.interval.ms = 300000 (consumer is stuck)
+  * max amont before two .poll() -> calls before declaring consumer dead
+  * if easy processing -> make it less 
+* max.poll.records = 500
+  * increase in case the messages are small
+  * lower if it takes too much time to process
+  * BEST PRACTICE  - > monitor how many records are pooled per request. how fast they are processed
+* fetch.min.bytes = 1 
+  * helps improoving througput and decrising request number 
+* fetch.max.bytes = 52428800
+  * if enough memory it can be increased 
+* fetch.max.wait.ms = 500 
+  *  fetch even fetch.max.bytes bufer is not full

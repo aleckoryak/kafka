@@ -1,0 +1,24 @@
+plugins {
+    id 'java'
+}
+
+group = 'com.ok.kafka'
+version = '1.0'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.apache.kafka:kafka-streams:3.9.0'
+    implementation 'org.slf4j:slf4j-api:2.0.17'
+    implementation 'org.slf4j:slf4j-simple:2.0.17'
+
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.13.3'
+
+
+}
+
+test {
+    useJUnitPlatform()
+}
