@@ -9,13 +9,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
-import java.net.URL;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
 public class WikimediaChangesProducer {
     private static final Logger logger = LoggerFactory.getLogger(WikimediaChangesProducer.class);
-    public static final String BOOTSTRAP = "localhost:9092";
+    private static final String BOOTSTRAP = "localhost:9092";
+    private static final String TOPIC = "wikimedia_changes";
+    private static final String WIKI_MEDIA_URL = "https://stream.wikimedia.org/v2/stream/recentchange";
 
     public static void main(String[] args) throws InterruptedException {
         logger.info("Hello World");
@@ -39,14 +40,12 @@ public class WikimediaChangesProducer {
         props.setProperty("value.serializer", StringSerializer.class.getName());
         KafkaProducer<String, String> producer = new KafkaProducer<>(props);
 
-        String topic = "wikimedia_changes";
-
         //kafka-topics.sh --bootstrap-server localhost:9092 --topic wikimedia_changes --create --partitions 3 --replication-factor 1
-        EventHandler eventHandler = new WikimediaChangeHandler(producer, topic);
+        EventHandler eventHandler = new WikimediaChangeHandler(producer, TOPIC);
 
-        String url = "https://stream.wikimedia.org/v2/stream/recentchange";
 
-        EventSource.Builder builder = new EventSource.Builder(eventHandler, URI.create(url));
+
+        EventSource.Builder builder = new EventSource.Builder(eventHandler, URI.create(WIKI_MEDIA_URL));
         EventSource eventSource = builder.build();
         eventSource.start();
 
