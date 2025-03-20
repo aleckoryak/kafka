@@ -8,6 +8,7 @@ import org.apache.http.client.CredentialsProvider;
 import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.impl.client.DefaultConnectionKeepAliveStrategy;
 import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.opensearch.action.bulk.BulkRequest;
 import org.opensearch.action.bulk.BulkResponse;
@@ -39,6 +40,19 @@ public class OpenSearchConsumerWithAtLeastOnceAndBulks {
 
         RestHighLevelClient openSearchClient = createOpenSearchClient();
         KafkaConsumer<String, String> consumer = createKafkaConsumer(groupId);
+
+        final Thread createThread = Thread.currentThread();
+        Runtime.getRuntime().addShutdownHook(new Thread() {
+            public void run() {
+                logger.info("Detected Shutdown, lets exit by calling consumer.wakeup()...");
+                consumer.wakeup();
+                try {
+                    createThread.join();
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        });
 
         try (openSearchClient; consumer) {
             boolean indexExists = openSearchClient.indices().exists(new GetIndexRequest(OPEN_SEARCH_INDEX), RequestOptions.DEFAULT);
@@ -74,6 +88,14 @@ public class OpenSearchConsumerWithAtLeastOnceAndBulks {
                     consumer.commitSync(); // At least once stratagy
                 }
             }
+        } catch (WakeupException e) {
+            logger.info("Consumer is starting to shut down");
+        } catch (Exception e) {
+            logger.error("Unexpected error while consuming records", e);
+        } finally {
+            consumer.close(); // commit offsets
+            openSearchClient.close();
+            logger.info("Consumer is gracefully shut down");
         }
     }
 
