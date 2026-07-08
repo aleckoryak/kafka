@@ -1,6 +1,11 @@
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
 rootProject.name = 'kafka'
 include 'basics'
 include 'kafka-producer-wikimedia'
 include 'kafka-consumer-opensearch'
 include 'kafka-streams-wikimedia'
+include 'kafka-cluster-spring:producer'
+include 'kafka-cluster-spring:consumer'
 

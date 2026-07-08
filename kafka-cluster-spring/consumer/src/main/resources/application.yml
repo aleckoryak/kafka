@@ -1,0 +1,37 @@
+server:
+  port: 8081
+
+spring:
+  main:
+    allow-bean-definition-overriding: true
+  application:
+    name: kafka-cluster-consumer
+  kafka:
+    # Addresses of all cluster brokers (KRaft mode, no ZooKeeper).
+    # Overridden by SPRING_KAFKA_BOOTSTRAP_SERVERS when running in Docker.
+    bootstrap-servers: localhost:9092,localhost:9094
+    listener:
+      # Each record must be acknowledged individually.
+      ack-mode: record
+    producer:
+      client-id: ${spring.application.name}
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      # Serializer used for records forwarded to the DLT.
+      value-serializer: com.ok.kafka.cluster.consumer.config.DltMessageSerializer
+      retries: 3
+    consumer:
+      group-id: ${spring.application.name}
+      auto-offset-reset: earliest
+      # Error-handling wrappers around the real deserializers.
+      key-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+    properties:
+      # Target type used to deserialize incoming JSON values.
+      spring.json.value.default.type: com.ok.kafka.cluster.consumer.dto.JsonMessage
+      spring.deserializer.key.delegate.class: org.apache.kafka.common.serialization.StringDeserializer
+      spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+
+kafka:
+  topics:
+    test-topic: kafka-cluster-spring-test-topic
+

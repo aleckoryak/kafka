@@ -1,0 +1,23 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: kafka-cluster-producer
+  kafka:
+    # List of all cluster brokers (KRaft mode, no ZooKeeper).
+    # Overridden by SPRING_KAFKA_BOOTSTRAP_SERVERS when running in Docker.
+    bootstrap-servers: localhost:9092,localhost:9094
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+kafka:
+  topics:
+    test-topic: kafka-cluster-spring-test-topic
+    # Number of partitions — must match the consumer's concurrency setting.
+    # Partition count can only be increased, never decreased.
+    partitions: 4
+    # Replication factor — must not exceed the number of available brokers (2).
+    replication-factor: 2
+
