@@ -20,12 +20,6 @@ producer + consumer) is started from a single `docker-compose.yml`.
 - Kafka 4.x brokers (KRaft only)
 
 ## Topics
-
-| Topic        | Partitions | Replication factor |
-|--------------|------------|--------------------|
-| `topic1`     | 4          | 2                  |
-| `topic1.dlt` | 4          | 2                  |
-
 Topics are created automatically at producer startup via `NewTopic` beans.
 The DLT has the same partition count as the source topic, because the DLT
 publisher preserves the original partition of a failed record.
@@ -42,12 +36,100 @@ publisher preserves the original partition of a failed record.
 
 ## Scenarios from the article
 
-- **Scenario 1** – 1 broker, 4 partitions, RF 1, one consumer group with two
-  consumers splitting the partitions.
-- **Scenario 2** – 1 broker, keyless messages using the Sticky Partitioner,
-  two consumer groups.
-- **Scenario 3** – 2 brokers, RF 2 (each partition has a replica), two consumer
-  groups with one consumer each. **This is the setup reproduced here.**
+### Scenario 1 — 1 broker · 1 consumer group · keyed messages
+
+| Brokers | Partitions | RF | Producer | Consumer groups | Threads/group |
+|---------|------------|----|----------|-----------------|---------------|
+| 1       | 4          | 1  | keyed    | **1**           | 2             |
+
+- The producer sends messages with a random integer key. Kafka hashes the key
+  to decide which partition receives the message.
+- One consumer group has **2 threads**: each thread reads 2 of the 4 partitions.
+- If one thread fails, the surviving thread takes over all 4 partitions.
+- `replication-factor=1` → only a master partition exists (no replica), so a
+  broker failure means data loss.
+
+```powershell
+docker compose -f docker-compose.scenario1.yml up --build
+# then:
+Invoke-RestMethod -Method Post -Uri "http://localhost:8080/messages/publish?count=10000"
+```
+
+**What to observe in Kafka UI (`http://localhost:8090`):**
+- Topic `topic1`: 4 partitions, messages distributed by key hash.
+- Consumer group `consumer-group-1`: 2 active members, each assigned 2 partitions.
+- Topic `topic1.dlt`: ~100 messages (every 100th × 1 group).
+
+---
+
+### Scenario 2 — 1 broker · 2 consumer groups · keyless / Sticky Partitioner
+
+| Brokers | Partitions | RF | Producer   | Consumer groups | group-1 threads | group-2 threads |
+|---------|------------|----|------------|-----------------|-----------------|-----------------|
+| 1       | 4          | 1  | **keyless**| 2               | 2               | **3**           |
+
+- The producer sends messages **without a key**. Kafka's Sticky Partitioner fills
+  one batch per partition in round-robin order, giving an even distribution.
+- **group-1** has 2 threads: each reads 2 partitions.
+- **group-2** has 3 threads: one reads 2 partitions, two read 1 each.
+- Both groups receive all 10 000 messages → 20 000 total reads.
+
+```powershell
+docker compose -f docker-compose.scenario2.yml up --build
+# then:
+Invoke-RestMethod -Method Post -Uri "http://localhost:8080/messages/publish?count=10000"
+```
+
+**What to observe:**
+- Topic `topic1`: partitions filled evenly (Sticky Partitioner).
+- Two consumer groups listed; different partition assignments per group.
+- Topic `topic1.dlt`: ~200 messages (every 100th × 2 groups).
+
+---
+
+### Scenario 3 — 2 brokers · 2 consumer groups · keyed messages · RF=2 ✅ (default)
+
+| Brokers | Partitions | RF  | Producer | Consumer groups | Threads/group |
+|---------|------------|-----|----------|-----------------|---------------|
+| **2**   | 4          | **2** | keyed  | 2               | 4             |
+
+- Two brokers allow `replication-factor=2`: every partition has a master on one
+  broker and a replica on the other. The replica takes over if the master fails.
+- Producer sends keyed messages; Kafka routes by key hash.
+- Each consumer group has **4 threads** — one thread per partition, maximum
+  parallelism.
+- Both groups receive all messages → 20 000 total reads.
+
+```powershell
+docker compose up --build          # uses docker-compose.yml (default)
+# then:
+Invoke-RestMethod -Method Post -Uri "http://localhost:8080/messages/publish?count=10000"
+```
+
+**What to observe:**
+- Two brokers in Kafka UI; controller elected from either.
+- Topic `topic1`: 4 partitions distributed across 2 brokers, each with a replica.
+- Two consumer groups, 4 active members each.
+- Topic `topic1.dlt`: ~200 messages (every 100th × 2 groups).
+- Stop one broker container and watch Kafka elect new partition leaders.
+
+---
+
+### Configuration reference
+
+All scenario settings are controlled by environment variables (overriding
+`application.yml`). The table below shows what each compose file sets:
+
+| Property (env var)                    | Scenario 1 | Scenario 2 | Scenario 3 |
+|---------------------------------------|-----------|-----------|-----------|
+| `SPRING_KAFKA_BOOTSTRAP_SERVERS`      | `kafka1:9092` | `kafka1:9092` | `kafka1:9092,kafka2:9092` |
+| `KAFKA_TOPICS_REPLICATION_FACTOR`     | **1**     | **1**     | 2         |
+| `KAFKA_TOPICS_PARTITIONS`             | 4         | 4         | 4         |
+| `KAFKA_PRODUCER_USE_KEYS`             | `true`    | **false** | `true`    |
+| `KAFKA_CONSUMER_GROUP1_CONCURRENCY`   | **2**     | **2**     | 4         |
+| `KAFKA_CONSUMER_GROUP2_ENABLED`       | **false** | true      | true      |
+| `KAFKA_CONSUMER_GROUP2_CONCURRENCY`   | —         | **3**     | 4         |
+| Compose file                          | `docker-compose.scenario1.yml` | `docker-compose.scenario2.yml` | `docker-compose.yml` |
 
 ## Run with Docker
 
@@ -69,15 +151,7 @@ podman compose up --build
 > `podman-compose up --build`.
 
 - Kafka UI: <http://localhost:8090>
-- Publish 10,000 messages:
 
-```powershell
-# Docker
-Invoke-RestMethod -Method Post -Uri "http://localhost:8080/messages/publish?count=10000"
-
-# Podman (same command — it exposes the same host ports)
-Invoke-RestMethod -Method Post -Uri "http://localhost:8080/messages/publish?count=10000"
-```
 
 Then watch the consumer logs and inspect `topic1` and `topic1.dlt` in Kafka UI.
 
@@ -121,21 +195,24 @@ Then start the apps. Use the **Gradle wrapper** (recommended — picks up
 
 Or use the local Gradle installation directly:
 
-```powershell
-$env:JAVA_HOME = "C:\Program Files\Java\jdk-26.0.1"
+```bash
 C:\software\gradle\gradle-9.6.1\bin\gradle.bat :kafka-cluster-spring:producer:bootRun
+```
+- Publish 10,000 messages:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri "http://localhost:8080/messages/publish?count=10000"
+```
+
+```bash
+curl.exe -X POST "http://localhost:8080/messages/publish?count=100"
+```
+
+```bash
 C:\software\gradle\gradle-9.6.1\bin\gradle.bat :kafka-cluster-spring:consumer:bootRun
 ```
 
 The apps default to `localhost:9092,localhost:9094` (the brokers' EXTERNAL
 listeners) when `SPRING_KAFKA_BOOTSTRAP_SERVERS` is not set.
 
-### IntelliJ IDEA — Gradle JVM setting
-
-Go to **Settings → Build → Build Tools → Gradle** and set:
-- **Gradle JVM**: `C:\Program Files\Java\jdk-26.0.1`
-- **Use Gradle from**: `Specified location` → `C:\software\gradle\gradle-9.6.1`
-
-This avoids the "incompatible Java / Gradle" error that occurs when IntelliJ
-uses its bundled Gradle (9.3.0, max Java 25) instead of the local 9.6.1.
 

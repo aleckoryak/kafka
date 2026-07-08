@@ -1,0 +1,79 @@
+# Scenario 1 — 1 broker · 4 partitions · RF=1 · keyed messages
+#              1 consumer group · 2 threads (2 partitions each)
+#
+# Run:  docker compose -f docker-compose.scenario1.yml up --build
+# Kafka UI:  http://localhost:8090
+# Producer:  POST http://localhost:8080/messages/publish?count=10000
+#
+# Expected result:
+#   - 10 000 messages spread across 4 partitions by key hash.
+#   - consumer-group-1 has 2 threads: each thread reads ~2 partitions.
+#   - consumer-group-2 is disabled.
+#   - 100 messages routed to topic1.dlt (every 100th number × 1 group).
+
+services:
+  kafka1:
+    image: apache/kafka:4.0.0
+    container_name: kafka1-s1
+    hostname: kafka1
+    ports:
+      - "9092:9093"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      # Single-node KRaft: only this broker is a voter.
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka1:29093'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT'
+      KAFKA_LISTENERS: 'INTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093,EXTERNAL://0.0.0.0:9093'
+      KAFKA_ADVERTISED_LISTENERS: 'INTERNAL://kafka1:9092,EXTERNAL://localhost:9092'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'INTERNAL'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      CLUSTER_ID: 'ciWo7IWazngRchmPES6q5B=='
+      KAFKA_LOG_DIRS: '/tmp/kraft-combined-logs'
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-cluster-ui-s1
+    depends_on:
+      - kafka1
+    ports:
+      - "8090:8080"
+    restart: always
+    environment:
+      KAFKA_CLUSTERS_0_NAME: scenario1
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka1:9092
+      DYNAMIC_CONFIG_ENABLED: 'true'
+
+  producer:
+    build:
+      context: ..
+      dockerfile: kafka-cluster-spring/producer/Dockerfile
+    container_name: kafka-cluster-producer-s1
+    depends_on:
+      - kafka1
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka1:9092
+      KAFKA_TOPICS_REPLICATION_FACTOR: 1   # only 1 broker available
+      KAFKA_TOPICS_PARTITIONS: 4
+      KAFKA_PRODUCER_USE_KEYS: 'true'      # route by key hash
+
+  consumer:
+    build:
+      context: ..
+      dockerfile: kafka-cluster-spring/consumer/Dockerfile
+    container_name: kafka-cluster-consumer-s1
+    depends_on:
+      - kafka1
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka1:9092
+      KAFKA_CONSUMER_GROUP1_CONCURRENCY: 2   # 2 threads → 2 partitions each
+      KAFKA_CONSUMER_GROUP2_ENABLED: 'false' # single group for scenario 1
+

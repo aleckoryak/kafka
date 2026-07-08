@@ -34,4 +34,16 @@ spring:
 kafka:
   topics:
     test-topic: kafka-cluster-spring-test-topic
+  consumer:
+    # Threads for consumer-group-1.
+    # Scenario 1: 2  (2 consumers share 4 partitions → 2 partitions each)
+    # Scenario 2: 2  (same as scenario 1 for group-1)
+    # Scenario 3: 4  (1 consumer reads all 4 partitions — 1 thread per partition)
+    group1-concurrency: 4
+    # Threads for consumer-group-2.
+    # Scenario 2: 3  (3 consumers: one reads 2 partitions, two read 1 each)
+    # Scenario 3: 4  (same as group-1)
+    group2-concurrency: 4
+    # Set to false to disable consumer-group-2 entirely (Scenario 1).
+    group2-enabled: true
 

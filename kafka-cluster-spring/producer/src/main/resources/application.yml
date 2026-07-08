@@ -18,6 +18,11 @@ kafka:
     # Number of partitions — must match the consumer's concurrency setting.
     # Partition count can only be increased, never decreased.
     partitions: 4
-    # Replication factor — must not exceed the number of available brokers (2).
+    # Replication factor — must not exceed the number of available brokers.
+    # Scenario 1 & 2: set to 1 (single broker).  Scenario 3: 2 (two brokers).
     replication-factor: 2
+  producer:
+    # true  → messages carry a random integer key; Kafka routes by key hash   (Scenario 1 & 3)
+    # false → messages have no key; Kafka's Sticky Partitioner distributes them (Scenario 2)
+    use-keys: true
 

@@ -1,6 +1,7 @@
 package com.ok.kafka.cluster.consumer.config;
 
 import org.apache.kafka.common.TopicPartition;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.annotation.EnableKafka;
@@ -12,9 +13,18 @@ import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 
 /**
- * Configures multi-threaded consumption and Dead Letter Topic (DLT) publishing.
- * The number of threads should match the number of partitions: only one thread
- * can read from a single partition, and partition count cannot be decreased.
+ * Configures two independent listener container factories — one per consumer group —
+ * so that each group can have a different concurrency (thread count).
+ *
+ * <pre>
+ * Scenario 1: group1-concurrency=2, group2-enabled=false
+ * Scenario 2: group1-concurrency=2, group2-concurrency=3, group2-enabled=true
+ * Scenario 3: group1-concurrency=4, group2-concurrency=4, group2-enabled=true
+ * </pre>
+ *
+ * Thread count = number of partitions this group's consumers will read in parallel.
+ * A single thread can read from multiple partitions, but one partition is only ever
+ * read by one thread within the same group.
  */
 @Configuration
 @EnableKafka
@@ -24,6 +34,14 @@ public class KafkaConfiguration {
 
     private final ProducerFactory<Object, Object> producerFactory;
     private final ConsumerFactory<Object, Object> consumerFactory;
+
+    /** Concurrency (thread count) for consumer-group-1. */
+    @Value("${kafka.consumer.group1-concurrency:4}")
+    private int group1Concurrency;
+
+    /** Concurrency (thread count) for consumer-group-2. */
+    @Value("${kafka.consumer.group2-concurrency:4}")
+    private int group2Concurrency;
 
     public KafkaConfiguration(ProducerFactory<Object, Object> producerFactory,
                               ConsumerFactory<Object, Object> consumerFactory) {
@@ -36,23 +54,33 @@ public class KafkaConfiguration {
         return new KafkaTemplate<>(producerFactory);
     }
 
+    /** Factory for consumer-group-1. */
     @Bean
     public ConcurrentKafkaListenerContainerFactory<Object, Object> kafkaListenerContainerFactory(
             DefaultErrorHandler errorHandler) {
+        return buildFactory(errorHandler, group1Concurrency);
+    }
+
+    /** Factory for consumer-group-2 (separate concurrency setting). */
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<Object, Object> kafkaListenerContainerFactory2(
+            DefaultErrorHandler errorHandler) {
+        return buildFactory(errorHandler, group2Concurrency);
+    }
+
+    private ConcurrentKafkaListenerContainerFactory<Object, Object> buildFactory(
+            DefaultErrorHandler errorHandler, int concurrency) {
         ConcurrentKafkaListenerContainerFactory<Object, Object> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory);
-        // Route failed messages to the DLT.
         factory.setCommonErrorHandler(errorHandler);
-        // Process messages using 4 threads (one per partition).
-        factory.setConcurrency(4);
+        factory.setConcurrency(concurrency);
         return factory;
     }
 
     /**
-     * Publisher that routes failed records to the dead-letter topic, keeping the
-     * original partition. The DLT must have at least as many partitions as the
-     * source topic, otherwise failed records would be lost.
+     * Routes failed records to the dead-letter topic on the same partition.
+     * The DLT must have at least as many partitions as the source topic.
      */
     @Bean
     public DeadLetterPublishingRecoverer publisher(KafkaTemplate<Object, Object> bytesTemplate) {
@@ -60,9 +88,7 @@ public class KafkaConfiguration {
                 new TopicPartition(record.topic() + DLT_TOPIC_SUFFIX, record.partition()));
     }
 
-    /**
-     * Default error handler that forwards any exception to the DLT without retries.
-     */
+    /** Sends any exception immediately to the DLT — no retries. */
     @Bean
     public DefaultErrorHandler errorHandler(DeadLetterPublishingRecoverer recoverer) {
         DefaultErrorHandler handler = new DefaultErrorHandler(recoverer);
@@ -70,4 +96,3 @@ public class KafkaConfiguration {
         return handler;
     }
 }
-
